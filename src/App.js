@@ -5,10 +5,28 @@ import { getFirestore, collection, doc, addDoc, getDocs, updateDoc, deleteDoc, o
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Scanner } from '@yudiel/react-qr-scanner';
 import QRCode from "qrcode.react";
 import html2canvas from 'html2canvas';
 
+// Importación de componentes de UI
+import InputField from './components/InputField.js';
+import Modal from './components/Modal.js';
+import ConfirmationModal from './components/ConfirmationModal.js';
+import StatCard from './components/StatCard.js';
+import FileUploader from './components/FileUploader.js';
+import TextAreaField from './components/TextAreaField.js';
+import SelectField from './components/SelectField.js';
+import SearchableSelect from './components/SearchableSelect.js';
+import RejectionModal from './components/modals/RejectionModal.js';
+import EnrolledListModal from './components/modals/EnrolledListModal.js';
+import QRScannerModal from './components/modals/QRScannerModal.js';
+import QRDisplayModal from './components/modals/QRDisplayModal.js';
+
+// Importación de Páginas/Vistas
+import PortalSelector from './pages/login/PortalSelector.js';
+import ClubLoginScreen from './pages/login/ClubLoginScreen.js';
+import UserLoginScreen from './pages/login/UserLoginScreen.js';
+import MemberLoginScreen from './pages/login/MemberLoginScreen.js';
 
 // Importación de iconos de Lucide React
 import { Plus, Edit, Trash2, LogIn, ArrowLeft, Building, UserPlus, X, Shield, Users, DollarSign, Settings, FileText, BarChart2, AlertCircle, QrCode, Newspaper, ScanLine, UserCheck, UserX, Loader2, Image as ImageIcon, Upload, Dumbbell, RefreshCw, LogOut, Download, MessageCircle, Mail as MailIcon, Paperclip, ExternalLink, Save, HardDrive, Search, Clock, CheckCircle, XCircle, Pencil, FileDown, MessageSquare, ThumbsUp, ThumbsDown, Calendar, ChevronLeft, ChevronRight, HeartPulse, Music, BookOpen, SwatchBook, Palmtree, Send, Inbox, Reply } from 'lucide-react';
@@ -23,6 +41,7 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_APP_ID,
   measurementId: process.env.REACT_APP_MEASUREMENT_ID
 };
+
 const appId = 'the-club-cloud'; // ID fijo para la aplicación
 const STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -88,336 +107,6 @@ const ActivityIcon = ({ name, ...props }) => {
     return IconComponent ? <IconComponent {...props} /> : <Dumbbell {...props} />;
 };
 
-
-// --- Componentes UI Reutilizables ---
-const InputField = ({ id, label, type, value, onChange, placeholder, disabled = false, icon: Icon }) => (
-    <div className="relative">
-        {label && <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>}
-        {Icon && <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none top-7"><Icon className="text-gray-400" size={16}/></div>}
-        <input id={id} name={id} type={type} value={value || ''} onChange={onChange} placeholder={placeholder} disabled={disabled} className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed ${Icon ? 'pl-9' : ''}`} />
-    </div>
-);
-
-const TextAreaField = ({ id, label, value, onChange, placeholder }) => (
-    <div>
-        {label && <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>}
-        <textarea id={id} name={id} value={value || ''} onChange={onChange} placeholder={placeholder} rows="3" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-    </div>
-);
-
-const SelectField = ({ id, label, value, onChange, children, disabled = false }) => (
-    <div>
-        {label && <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>}
-        <select id={id} name={id} value={value || ''} onChange={onChange} disabled={disabled} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed">{children}</select>
-    </div>
-);
-
-const SearchableSelect = ({ label, options, selectedOption, onSelect, placeholder }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isOpen, setIsOpen] = useState(false);
-    const wrapperRef = useRef(null);
-
-    const filteredOptions = useMemo(() => {
-        if (!searchTerm) return options;
-        return options.filter(option => 
-            option.name.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [options, searchTerm]);
-
-    const handleSelect = (option) => {
-        onSelect(option);
-        setSearchTerm(option.name);
-        setIsOpen(false);
-    };
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [wrapperRef]);
-    
-    useEffect(() => {
-       const selected = options.find(o => o.id === selectedOption);
-       setSearchTerm(selected ? selected.name : '');
-    }, [selectedOption, options]);
-
-    return (
-        <div className="relative" ref={wrapperRef}>
-            <InputField 
-                label={label}
-                id="searchable-select"
-                type="text"
-                value={searchTerm}
-                onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    if (!isOpen) setIsOpen(true);
-                }}
-                onFocus={() => setIsOpen(true)}
-                placeholder={placeholder}
-                icon={Search}
-            />
-            {isOpen && (
-                <ul className="absolute z-10 w-full bg-gray-800 border border-gray-600 rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg">
-                    {filteredOptions.length > 0 ? filteredOptions.map(option => (
-                        <li 
-                            key={option.id} 
-                            onClick={() => handleSelect(option)}
-                            className="px-3 py-2 text-sm text-white hover:bg-blue-600 cursor-pointer"
-                        >
-                            {option.name}
-                        </li>
-                    )) : <li className="px-3 py-2 text-sm text-gray-400">No se encontraron socios.</li>}
-                </ul>
-            )}
-        </div>
-    );
-};
-
-
-const Modal = ({ isOpen, onClose, title, children, size = 'lg' }) => {
-    if (!isOpen) return null;
-    const sizeClass = size === 'lg' ? 'max-w-lg' : size === 'xl' ? 'max-w-3xl' : 'max-w-7xl';
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className={`bg-gray-800 rounded-xl shadow-2xl w-full ${sizeClass} p-6 sm:p-8 border border-gray-700`}>
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-white">{title}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
-                </div>
-                {children}
-            </div>
-        </div>
-    );
-};
-
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm p-6 border border-gray-700">
-                <h2 className="text-xl font-bold text-white mb-4">{title}</h2>
-                <p className="text-gray-300 mb-6">{message}</p>
-                <div className="flex justify-end gap-3">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">Cancelar</button>
-                    <button type="button" onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Confirmar</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const RejectionModal = ({ isOpen, onClose, onConfirm, title="Rechazar Clase", placeholder="Ej: No tengo disponibilidad..." }) => {
-    const [comment, setComment] = useState("");
-    if (!isOpen) return null;
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={title}>
-            <div className="space-y-4">
-                <TextAreaField
-                    id="rejectionComment"
-                    label="Motivo (opcional)"
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder={placeholder}
-                />
-                <div className="flex justify-end gap-3">
-                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">Cancelar</button>
-                    <button type="button" onClick={() => onConfirm(comment)} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Confirmar</button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-const EnrolledListModal = ({ isOpen, onClose, members, title }) => {
-    if (!isOpen) return null;
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={title}>
-            <ul className="space-y-2 max-h-80 overflow-y-auto">
-                {members.length > 0 ? members.map(member => (
-                    <li key={member.id} className="bg-gray-700 p-3 rounded-md">{member.name}</li>
-                )) : <p className="text-gray-400">No hay socios inscriptos en esta clase.</p>}
-            </ul>
-        </Modal>
-    )
-};
-
-
-const QRScannerModal = ({ isOpen, onClose, onScanSuccess }) => {
-    if(!isOpen) return null;
-
-    return (
-         <Modal isOpen={isOpen} onClose={onClose} title="Escanear Código QR">
-            <Scanner
-                onDecode={(result) => onScanSuccess(result)}
-                onError={(error) => console.log(error?.message)}
-             />
-             <p className="text-center text-gray-400 mt-4">Apunta la cámara al código QR del socio o instructor.</p>
-        </Modal>
-    )
-}
-
-const FileUploader = ({ onFileSelect, currentFileUrl, identifier, acceptedFileTypes = "image/*" }) => {
-    const [preview, setPreview] = useState(currentFileUrl);
-    const [fileName, setFileName] = useState(currentFileUrl ? 'Archivo actual' : 'Ningún archivo seleccionado');
-
-    useEffect(() => {
-        setPreview(currentFileUrl);
-        if (currentFileUrl) {
-            setFileName('Archivo actual');
-        }
-    }, [currentFileUrl]);
-
-    const handleFileChange = (e) => {
-        if (e.target.files[0]) {
-            const selectedFile = e.target.files[0];
-            onFileSelect(selectedFile);
-            setFileName(selectedFile.name);
-            if (selectedFile.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onloadend = () => setPreview(reader.result);
-                reader.readAsDataURL(selectedFile);
-            } else {
-                setPreview(null);
-            }
-        }
-    };
-
-    return (
-        <div className="space-y-3">
-            <div className="w-full bg-gray-700 rounded-lg flex items-center justify-center p-4 border-2 border-dashed border-gray-600 min-h-[100px]">
-                {preview && acceptedFileTypes.includes('image') ? (
-                    <img src={preview} alt="Vista previa" className="max-h-32 rounded-md" />
-                ) : (
-                    <div className="text-center text-gray-400">
-                        <Paperclip size={32} className="mx-auto" />
-                        <p className="mt-2 text-sm">{fileName}</p>
-                    </div>
-                )}
-            </div>
-            <input type="file" id={`file-upload-${identifier}`} className="hidden" onChange={handleFileChange} accept={acceptedFileTypes} />
-            <label htmlFor={`file-upload-${identifier}`} className="cursor-pointer w-full inline-block text-center py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-500">
-                Seleccionar archivo...
-            </label>
-        </div>
-    );
-};
-
-
-const StatCard = ({ title, value, icon: Icon }) => (<div className="bg-gray-800 p-6 rounded-xl border border-gray-700 flex items-center space-x-4"><div className="bg-gray-700 p-3 rounded-full"><Icon className="text-blue-400" size={24} /></div><div><p className="text-gray-400 text-sm">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div>);
-
-
-// --- VISTAS DE LOGIN ---
-const PortalSelector = ({ setPortalMode }) => (
-    <div className="w-full max-w-md mx-auto bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-        <img src="/logo.png" alt="The Club Cloud Logo" className="h-24 mx-auto mb-6"/>
-        <h2 className="text-2xl font-bold text-white text-center mb-6">Bienvenido a The Club Cloud</h2>
-        <p className="text-center text-gray-400 mb-8">Seleccione el portal al que desea acceder.</p>
-        <div className="flex flex-col space-y-4">
-            <button onClick={() => setPortalMode('admin')} className="w-full p-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"><Shield />Portal de Administración</button>
-            <button onClick={() => setPortalMode('member')} className="w-full p-4 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700 flex items-center justify-center gap-2"><Users />Portal de Socios</button>
-        </div>
-    </div>
-);
-
-const ClubLoginScreen = ({ onClubLogin, error, onResetDemo, forMember = false }) => {
-    const [clubId, setClubId] = useState("");
-    const [isResetting, setIsResetting] = useState(false);
-
-    const handleSubmit = (e) => { e.preventDefault(); onClubLogin(clubId.trim()); };
-
-    const handleReset = async () => {
-        setIsResetting(true);
-        await onResetDemo();
-        setIsResetting(false);
-    }
-
-    return (
-        <div className="w-full max-w-sm mx-auto bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-            <div className="text-center mb-6">
-                <img src="/logo.png" alt="The Club Cloud Logo" className="h-20 mx-auto mb-4"/>
-                <h2 className="text-2xl font-bold text-white mt-4">{forMember ? "Portal de Socios" : "Acceso para Clubes"}</h2>
-                <p className="text-gray-400">Introduce el ID de tu club para continuar.</p>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <InputField id="clubId" label="ID del Club" placeholder="Ej: DEMO" value={clubId} onChange={(e) => setClubId(e.target.value.toUpperCase())} />
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-                <button type="submit" className="w-full mt-2 px-4 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 flex items-center justify-center">
-                    <LogIn size={18} className="mr-2"/>Continuar
-                </button>
-            </form>
-            {!forMember && (
-                <div className="mt-4 pt-4 border-t border-gray-700 text-center">
-                    <button onClick={handleReset} disabled={isResetting} className="text-sm text-yellow-400 hover:text-yellow-300 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center w-full">
-                        {isResetting ? <Loader2 size={16} className="animate-spin mr-2" /> : <RefreshCw size={16} className="mr-2" />}
-                        {isResetting ? 'Reiniciando...' : 'Reiniciar Datos DEMO'}
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const UserLoginScreen = ({ onUserLogin, onBack, clubName, error, clubLogo }) => {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const handleSubmit = (e) => { e.preventDefault(); onUserLogin(email, password); };
-    
-    return (
-        <div className="w-full max-w-sm mx-auto bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-            <div className="text-center mb-6">
-                {clubLogo ? <img src={clubLogo} alt="Logo del Club" className="h-20 mx-auto mb-4"/> : <Building size={48} className="mx-auto text-blue-400" />}
-                <h2 className="text-2xl font-bold text-white mt-4">Login en {clubName}</h2>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <InputField id="email" label="Email" type="email" placeholder="admin@demo.com" value={email} onChange={(e) => setEmail(e.target.value)}/>
-                <InputField id="password" label="Contraseña" type="password" placeholder="demo" value={password} onChange={(e) => setPassword(e.target.value)}/>
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-                <button type="submit" className="w-full mt-2 px-4 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 flex items-center justify-center"><LogIn size={18} className="mr-2"/>Entrar</button>
-            </form>
-            <button onClick={onBack} className="w-full mt-4 text-center text-sm text-gray-400 hover:text-white"><ArrowLeft size={14} className="inline mr-1"/>Volver</button>
-        </div>
-    );
-};
-
-const MemberLoginScreen = ({ onMemberLogin, onBack, clubName, error, clubLogo }) => {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const handleSubmit = (e) => { e.preventDefault(); onMemberLogin(email, password); };
-    
-    return (
-        <div className="w-full max-w-sm mx-auto bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700">
-            <div className="text-center mb-6">
-                {clubLogo ? <img src={clubLogo} alt="Logo del Club" className="h-20 mx-auto mb-4"/> : <Building size={48} className="mx-auto text-blue-400" />}
-                <h2 className="text-2xl font-bold text-white mt-4">Portal de Socios de {clubName}</h2>
-                 <p className="text-gray-400 mt-2">Introduce tus credenciales para acceder.</p>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <InputField id="email" label="Email" type="email" placeholder="tu.email@example.com" value={email} onChange={(e) => setEmail(e.target.value)}/>
-                 <InputField id="password" label="Clave de Acceso" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}/>
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-                <button type="submit" className="w-full mt-2 px-4 py-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 flex items-center justify-center"><LogIn size={18} className="mr-2"/>Acceder</button>
-            </form>
-            <button onClick={onBack} className="w-full mt-4 text-center text-sm text-gray-400 hover:text-white"><ArrowLeft size={14} className="inline mr-1"/>Volver</button>
-        </div>
-    );
-};
-
-const QRDisplayModal = ({ isOpen, onClose, qrValue, memberName }) => {
-    return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Código QR para ${memberName}`}>
-            <div className="bg-white p-6 rounded-lg flex flex-col items-center">
-                <QRCode value={qrValue} size={256} />
-                <p className="text-gray-800 mt-4 text-center">Este QR contiene la información de la credencial del socio.</p>
-            </div>
-        </Modal>
-    );
-};
 
 // --- Formulario Modal para Socios ---
 const MemberFormModal = ({ isOpen, onClose, onSave, memberData, setMemberData, config, activities, handleFileUpload }) => {
@@ -1527,7 +1216,13 @@ const NewsModule = ({ db, currentClub, handleFileUpload }) => {
                 setNewsData={setCurrentNewsData}
                 handleFileUpload={handleFileUpload}
             />
-            <ConfirmationModal isOpen={isConfirmModalOpen} onClose={handleCloseConfirmModal} onConfirm={handleConfirmDelete} title="Confirmar Eliminación" message="¿Estás seguro de que quieres eliminar esta noticia?" />
+            <ConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={handleCloseConfirmModal}
+                onConfirm={handleConfirmDelete}
+                title="Confirmar Eliminación"
+                message="¿Estás seguro de que quieres eliminar esta noticia?"
+            />
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                  <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white">Noticias y Anuncios</h2>
@@ -2154,7 +1849,13 @@ const ScheduleModule = ({ db, currentClub, schedule, setSchedule, activities, in
     return (
         <>
             <ScheduleFormModal isOpen={isFormModalOpen} onClose={handleCloseFormModal} onSave={handleSaveSchedule} scheduleData={currentScheduleData} setScheduleData={setCurrentScheduleData} activities={activities} instructors={instructors} spaces={spaces} />
-            <ConfirmationModal isOpen={isConfirmModalOpen} onClose={handleCloseConfirmModal} onConfirm={handleConfirmDelete} title="Confirmar Eliminación" message="¿Estás seguro de que quieres eliminar esta clase del horario?" />
+            <ConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={handleCloseConfirmModal}
+                onConfirm={handleConfirmDelete}
+                title="Confirmar Eliminación"
+                message="¿Estás seguro de que quieres eliminar esta clase del horario?"
+            />
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white">Horario de Clases</h2>
@@ -2243,7 +1944,13 @@ const ActivitiesModuleFull = ({ db, currentClub, activities, spaces }) => {
     return (
         <>
             <ActivityFormModal isOpen={isFormModalOpen} onClose={handleCloseFormModal} onSave={handleSaveActivity} activityData={currentActivityData} setActivityData={setCurrentActivityData} spaces={spaces}/>
-            <ConfirmationModal isOpen={isConfirmModalOpen} onClose={handleCloseConfirmModal} onConfirm={handleConfirmDelete} title="Confirmar Eliminación" message="¿Estás seguro de que quieres eliminar esta actividad?" />
+            <ConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={handleCloseConfirmModal}
+                onConfirm={handleConfirmDelete}
+                title="Confirmar Eliminación"
+                message="¿Estás seguro de que quieres eliminar esta actividad?"
+            />
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white">Actividades del Club</h2>
@@ -2874,8 +2581,8 @@ const ConfigModule = ({ db, currentClub, config, setConfig, handleFileUpload }) 
                         <FileUploader onFileSelect={setSelectedLogoFile} currentFileUrl={config?.logoURL} identifier="club-logo" />
                          {selectedLogoFile && (
                             <button type="button" onClick={handleUploadLogo} disabled={isUploadingLogo} className="mt-2 w-full px-4 py-2 bg-blue-600 text-white rounded-md flex items-center justify-center disabled:bg-gray-500">
-                                 {isUploadingLogo ? <Loader2 className="animate-spin" /> : <Upload size={16} className="mr-2" />}
-                                 {isUploadingLogo ? 'Subiendo...' : "Confirmar Logo"}
+                                 {isUploading ? <Loader2 className="animate-spin" /> : <Upload size={16} className="mr-2" />}
+                                 {isUploading ? 'Subiendo...' : "Confirmar Logo"}
                             </button>
                          )}
                         {config.logoURL && !selectedLogoFile && <div className="mt-2 text-sm text-gray-400">Logo actual cargado. ¡No olvides guardar!</div>}
