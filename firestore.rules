@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isUserInClub(clubId, userId) {
+      return exists(/databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(userId)) &&
+             get(/databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(userId)).data.clubId == clubId;
+    }
+
+    function isClubAdmin(clubId) {
+      return isSignedIn() && isUserInClub(clubId, request.auth.uid) &&
+             get(/databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
+    match /artifacts/the-club-cloud/public/data/clubs/{clubId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin(clubId);
+    }
+    
+    match /artifacts/the-club-cloud/public/data/club_users/{userId} {
+        allow get: if isSignedIn() && (request.auth.uid == userId || isClubAdmin(resource.data.clubId));
+        allow list: if isSignedIn();
+        allow write: if isClubAdmin(resource.data.clubId);
+    }
+
+    match /artifacts/the-club-cloud/public/data/{collection}/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isClubAdmin(resource.data.clubId);
+    }
+  }
+}
