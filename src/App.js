@@ -31,10 +31,8 @@ const firebaseConfig = {
 const appId = 'the-club-cloud';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
-// --- Componente Wrapper definido FUERA del componente App ---
-// Al estar aquí, React sabe que es el mismo componente y no lo destruye en cada renderizado.
 const ClubDashboardWrapper = (props) => (
-    <ClubDataProvider db={props.db} currentClub={props.currentClub}>
+    <ClubDataProvider db={props.db} currentClub={props.currentClub} isAuthReady={props.isAuthReady}>
         <ClubDashboard {...props} />
     </ClubDataProvider>
 );
@@ -43,6 +41,7 @@ const ClubDashboardWrapper = (props) => (
 export default function App() {
     const [db, setDb] = useState(null);
     const [storage, setStorage] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
     const [isInitialSetupComplete, setIsInitialSetupComplete] = useState(false);
     
     // Estados de la Sesión
@@ -100,19 +99,7 @@ export default function App() {
         resetInactivityTimer();
     };
     
-    const resetDemoData = useCallback(async (dbInstance) => {
-      // Lógica para reiniciar datos de demo
-    }, []);
-    
-    const setupDemoClub = useCallback(async (db) => { 
-      // Lógica para crear datos de demo si no existen
-    }, [resetDemoData]);
-    
     useEffect(() => {
-        let isInitialized = false;
-        if(isInitialized) return;
-        isInitialized = true;
-
         const init = async () => {
             try {
                 const app = initializeApp(firebaseConfig);
@@ -123,7 +110,10 @@ export default function App() {
                 setStorage(firebaseStorage);
                 
                 onAuthStateChanged(firebaseAuth, async (user) => {
-                    if (!user) await signInAnonymously(firebaseAuth);
+                    if (!user) {
+                       await signInAnonymously(firebaseAuth);
+                    }
+                    setIsAuthReady(true);
                 });
 
                 const savedSession = localStorage.getItem('tcc_session');
@@ -135,18 +125,11 @@ export default function App() {
                     setCurrentAdmin(sessionData.currentAdmin);
                     setCurrentMember(sessionData.currentMember);
                     setCurrentInstructor(sessionData.currentInstructor);
-                    if (sessionData.portalMode === 'admin' || sessionData.portalMode === 'instructor') {
-                        setAdminView('dashboard');
-                    }
-                    if (sessionData.portalMode === 'member') {
-                        setMemberView('dashboard');
-                    }
+                    if (sessionData.portalMode === 'admin' || sessionData.portalMode === 'instructor') setAdminView('dashboard');
+                    if (sessionData.portalMode === 'member') setMemberView('dashboard');
                     resetInactivityTimer();
                 }
 
-                if (firestoreDb) {
-                  await setupDemoClub(firestoreDb);
-                }
             } catch (error) {
                  console.error("Firebase initialization error", error);
             } finally {
@@ -154,7 +137,7 @@ export default function App() {
             }
         };
         init().catch(console.error);
-    }, [resetInactivityTimer, setupDemoClub]);
+    }, [resetInactivityTimer]);
 
     const handleClubLogin = useCallback(async (clubId, forPortal) => {
         if (!db) return;
@@ -174,7 +157,7 @@ export default function App() {
     }, [db]);
     
     const handleAdminUserLogin = useCallback(async (email, password) => {
-        if (!db || !currentClub) return;
+        if (!db || !currentClub) return; 
         setLoginError("");
         const q = query(collection(db, `artifacts/${appId}/public/data/club_users`), where("clubId", "==", currentClub.id), where("email", "==", email));
         const snapshot = await getDocs(q);
@@ -191,7 +174,7 @@ export default function App() {
                     const instructorData = { id: instSnap.docs[0].id, ...instSnap.docs[0].data() };
                     setCurrentInstructor(instructorData);
                     setPortalMode('instructor');
-                    setAdminView('dashboard');
+                    setAdminView('dashboard'); 
                     saveSession({ ...sessionData, portalMode: 'instructor', currentInstructor: instructorData });
                 } else { setLoginError("Perfil de instructor no encontrado."); }
             } else {
@@ -209,8 +192,8 @@ export default function App() {
         if (!db || !currentClub) return;
         setLoginError("");
         const q = query(
-            collection(db, `artifacts/${appId}/public/data/members`),
-            where("clubId", "==", currentClub.id),
+            collection(db, `artifacts/${appId}/public/data/members`), 
+            where("clubId", "==", currentClub.id), 
             where("email", "==", email),
             where("password", "==", password)
         );
@@ -229,11 +212,11 @@ export default function App() {
     const renderAdminPortal = () => {
         switch (adminView) {
             case 'clubLogin':
-                return <ClubLoginScreen onClubLogin={(id) => handleClubLogin(id, 'admin')} error={loginError} onResetDemo={() => resetDemoData(db)} />;
+                return <ClubLoginScreen onClubLogin={(id) => handleClubLogin(id, 'admin')} error={loginError} />;
             case 'userLogin':
                 return <UserLoginScreen onUserLogin={handleAdminUserLogin} clubName={currentClub?.name} error={loginError} onBack={handleLogout} clubLogo={clubConfig?.logoURL}/>;
             case 'dashboard':
-                return <ClubDashboardWrapper db={db} storage={storage} currentClub={currentClub} config={clubConfig} setConfig={setClubConfig} currentUser={currentAdmin} onLogout={handleLogout} />
+                return <ClubDashboardWrapper db={db} storage={storage} currentClub={currentClub} config={clubConfig} setConfig={setClubConfig} currentUser={currentAdmin} onLogout={handleLogout} isAuthReady={isAuthReady} />
             default:
                 return <p className="text-white">Cargando...</p>;
         }
@@ -251,7 +234,7 @@ export default function App() {
                 return <p className="text-white">Cargando...</p>;
         }
     }
-    
+
     const renderInstructorPortal = () => {
         if (!currentClub || !currentInstructor) return <div className="text-white">Cargando...</div>;
         return <InstructorDashboard db={db} currentClub={currentClub} currentInstructor={currentInstructor} onLogout={handleLogout} />
@@ -259,12 +242,7 @@ export default function App() {
 
     const renderContent = () => {
         if (!isInitialSetupComplete) {
-            return (
-                <div className="flex items-center justify-center h-screen">
-                    <Loader2 className="animate-spin mr-2 text-white"/>
-                    <span className="text-white">Inicializando aplicación...</span>
-                </div>
-            );
+            return <div className="text-center text-white flex items-center justify-center h-screen"><Loader2 className="animate-spin inline-block mr-2"/>Inicializando aplicación...</div>;
         }
 
         if (portalMode === null) return <PortalSelector setPortalMode={setPortalMode} />;

@@ -9,7 +9,7 @@ export const useClubData = () => {
 
 const appId = 'the-club-cloud';
 
-export const ClubDataProvider = ({ children, db, currentClub }) => {
+export const ClubDataProvider = ({ children, db, currentClub, isAuthReady }) => {
     const [loading, setLoading] = useState(true);
     const [members, setMembers] = useState([]);
     const [payments, setPayments] = useState([]);
@@ -19,7 +19,8 @@ export const ClubDataProvider = ({ children, db, currentClub }) => {
     const [instructors, setInstructors] = useState([]);
 
     useEffect(() => {
-        if (!db || !currentClub?.id) {
+        // CORRECCIÓN: No hacer nada si Firebase no está listo o si el usuario no se ha autenticado.
+        if (!db || !currentClub?.id || !isAuthReady) {
             setLoading(false);
             return;
         }
@@ -48,13 +49,15 @@ export const ClubDataProvider = ({ children, db, currentClub }) => {
                     case 'instructors': setInstructors(data); break;
                     default: break;
                 }
-            }, (error) => console.error(`Error fetching ${key}:`, error));
+            }, (error) => {
+                console.error(`Error fetching ${key}:`, error);
+            });
         });
         
         setLoading(false);
 
         return () => listeners.forEach(unsub => unsub());
-    }, [db, currentClub?.id]);
+    }, [db, currentClub?.id, isAuthReady]);
     
     const value = useMemo(() => ({
         loading,
