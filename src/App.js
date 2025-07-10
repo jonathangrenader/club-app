@@ -44,12 +44,10 @@ export default function App() {
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isInitialSetupComplete, setIsInitialSetupComplete] = useState(false);
     
-    // Estados de la Sesión
     const [portalMode, setPortalMode] = useState(null); 
     const [currentClub, setCurrentClub] = useState(null);
     const [loginError, setLoginError] = useState("");
     
-    // Estados de Portales
     const [adminView, setAdminView] = useState('clubLogin');
     const [currentAdmin, setCurrentAdmin] = useState(null);
     const [clubConfig, setClubConfig] = useState(null);
@@ -99,6 +97,14 @@ export default function App() {
         resetInactivityTimer();
     };
     
+    const resetDemoData = useCallback(async (dbInstance) => {
+        // Lógica para reiniciar datos de demo...
+    }, []);
+    
+    const setupDemoClub = useCallback(async (db) => { 
+        // Lógica para crear datos de demo si no existen...
+    }, [resetDemoData]);
+    
     useEffect(() => {
         const init = async () => {
             try {
@@ -130,6 +136,9 @@ export default function App() {
                     resetInactivityTimer();
                 }
 
+                if (firestoreDb) {
+                    await setupDemoClub(firestoreDb);
+                }
             } catch (error) {
                  console.error("Firebase initialization error", error);
             } finally {
@@ -137,7 +146,7 @@ export default function App() {
             }
         };
         init().catch(console.error);
-    }, [resetInactivityTimer]);
+    }, []);
 
     const handleClubLogin = useCallback(async (clubId, forPortal) => {
         if (!db) return;
@@ -242,7 +251,12 @@ export default function App() {
 
     const renderContent = () => {
         if (!isInitialSetupComplete) {
-            return <div className="text-center text-white flex items-center justify-center h-screen"><Loader2 className="animate-spin inline-block mr-2"/>Inicializando aplicación...</div>;
+            return (
+                <div className="flex items-center justify-center h-screen">
+                    <Loader2 className="animate-spin mr-2 text-white"/>
+                    <span className="text-white">Inicializando aplicación...</span>
+                </div>
+            );
         }
 
         if (portalMode === null) return <PortalSelector setPortalMode={setPortalMode} />;

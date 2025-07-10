@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-const ClubDataContext = createContext();
+const ClubDataContext = createContext(null);
 
 export const useClubData = () => {
     return useContext(ClubDataContext);
@@ -19,14 +19,12 @@ export const ClubDataProvider = ({ children, db, currentClub, isAuthReady }) => 
     const [instructors, setInstructors] = useState([]);
 
     useEffect(() => {
-        // CORRECCIÓN: No hacer nada si Firebase no está listo o si el usuario no se ha autenticado.
         if (!db || !currentClub?.id || !isAuthReady) {
             setLoading(false);
             return;
         }
 
         setLoading(true);
-
         const collectionsToFetch = {
             members: `artifacts/${appId}/public/data/members`,
             payments: `artifacts/${appId}/public/data/payments`,
@@ -38,7 +36,7 @@ export const ClubDataProvider = ({ children, db, currentClub, isAuthReady }) => 
 
         const listeners = Object.entries(collectionsToFetch).map(([key, path]) => {
             const q = query(collection(db, path), where("clubId", "==", currentClub.id));
-            return onSnapshot(q, snap => {
+            return onSnapshot(q, (snap) => {
                 const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 switch(key) {
                     case 'members': setMembers(data); break;
@@ -54,9 +52,13 @@ export const ClubDataProvider = ({ children, db, currentClub, isAuthReady }) => 
             });
         });
         
-        setLoading(false);
+        // Da un pequeño margen para que lleguen los datos iniciales
+        const timer = setTimeout(() => setLoading(false), 1500);
 
-        return () => listeners.forEach(unsub => unsub());
+        return () => {
+            clearTimeout(timer);
+            listeners.forEach(unsub => unsub());
+        };
     }, [db, currentClub?.id, isAuthReady]);
     
     const value = useMemo(() => ({

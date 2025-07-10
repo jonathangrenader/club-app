@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDoc, doc, orderBy } from 'firebase/firestore';
 import QRScannerModal from '../components/modals/QRScannerModal.js';
 import { Loader2, QrCode } from 'lucide-react';
-import InputField from '../components/InputField.js';
 
 const appId = 'the-club-cloud';
 
@@ -13,7 +12,10 @@ const AttendanceModule = ({ db, currentClub, members }) => {
     const [scanResult, setScanResult] = useState({ message: "", type: "" });
 
     useEffect(() => {
-        if (!db || !currentClub?.id) return;
+        if (!db || !currentClub?.id) {
+            setLoadingLogs(false);
+            return;
+        }
         
         const attendancePath = `artifacts/${appId}/public/data/attendance`;
         const q = query(collection(db, attendancePath), where("clubId", "==", currentClub.id), orderBy("timestamp", "desc"));

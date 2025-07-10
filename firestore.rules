@@ -2,98 +2,96 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Functions ---
+    // --- Funciones auxiliares ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function getUserDoc(userId) {
-      return get(/databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(userId));
-    }
-
-    function isUserInClub(clubId, userId) {
-      let userDoc = getUserDoc(userId);
-      return userDoc != null && userDoc.data.clubId == clubId;
-    }
-
-    function getRole(userId) {
-      let userDoc = getUserDoc(userId);
-      return userDoc != null ? userDoc.data.role : null;
-    }
-
-    function isClubAdmin(clubId) {
-      return isSignedIn() && isUserInClub(clubId, request.auth.uid) && getRole(request.auth.uid) == 'Admin';
+    function isAdmin(clubId) {
+      let userRef = /databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(request.auth.uid);
+      return isSignedIn() &&
+             exists(userRef) &&
+             get(userRef).data.clubId == clubId &&
+             get(userRef).data.role == 'Admin';
     }
 
     function isClubStaff(clubId) {
-      let role = getRole(request.auth.uid);
-      return isSignedIn() && isUserInClub(clubId, request.auth.uid) && (role == 'Admin' || role == 'Staff');
+      let userRef = /databases/$(database)/documents/artifacts/the-club-cloud/public/data/club_users/$(request.auth.uid);
+      return isSignedIn() &&
+             exists(userRef) &&
+             get(userRef).data.clubId == clubId;
     }
 
+    function isMemberSelf(memberId) {
+      return isSignedIn() && request.auth.uid == memberId;
+    }
 
-    // --- Rules by Path (including clubId in path) ---
+    function isInstructorSelf(instructorId) {
+      return isSignedIn() && request.auth.uid == instructorId;
+    }
 
+    // --- Reglas por colección ---
+
+    // Clubes (público solo lectura)
     match /artifacts/the-club-cloud/public/data/clubs/{clubId} {
-      allow read: if isSignedIn();
-      allow write: if isClubAdmin(clubId);
+      allow read: if true;
+      allow write: if isClubStaff(clubId);
     }
 
+    // Usuarios del club (staff)
     match /artifacts/the-club-cloud/public/data/club_users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isClubAdmin(resource.data.clubId));
+      allow read: if isClubStaff(resource.data.clubId);
       allow list: if isSignedIn();
-      allow write: if isClubAdmin(request.resource.data.clubId);
+      allow write: if isAdmin(request.resource.data.clubId);
     }
 
+    // Socios (staff o ellos mismos)
     match /artifacts/the-club-cloud/public/data/members/{memberId} {
-      allow get: if isSignedIn() && (request.auth.uid == memberId || isClubStaff(resource.data.clubId));
+      allow read: if isClubStaff(resource.data.clubId) || isMemberSelf(memberId);
+      allow write: if isClubStaff(request.resource.data.clubId);
+      allow list: if isSignedIn(); // necesario para tablas (se puede limitar más)
+    }
+
+    // Cuotas
+    match /artifacts/the-club-cloud/public/data/dues/{dueId} {
+      allow get: if isClubStaff(resource.data.clubId) || (isSignedIn() && request.auth.uid == resource.data.memberId);
+      allow list: if isSignedIn();
+      allow create, update, delete: if isClubStaff(request.resource.data.clubId);
+    }
+
+    // Pagos
+    match /artifacts/the-club-cloud/public/data/payments/{paymentId} {
+      allow get: if isClubStaff(resource.data.clubId) || (isSignedIn() && request.auth.uid == resource.data.memberId);
+      allow list: if isSignedIn();
+      allow create, update, delete: if isClubStaff(request.resource.data.clubId);
+    }
+
+    // Noticias
+    match /artifacts/the-club-cloud/public/data/news/{newsId} {
+      allow read: if true;
+      allow create, update: if isClubStaff(request.resource.data.clubId);
+      allow delete: if isClubStaff(resource.data.clubId);
+    }
+
+    // Horarios (lectura para staff o instructores relacionados)
+    match /artifacts/the-club-cloud/public/data/schedule/{scheduleId} {
+      allow read: if isClubStaff(resource.data.clubId) || isInstructorSelf(resource.data.instructorId);
       allow list: if isSignedIn();
       allow write: if isClubStaff(request.resource.data.clubId);
     }
 
-
-    // For collections that depend on clubId, list must use where("clubId", "==", clubId) in frontend
-
-    match /artifacts/the-club-cloud/public/data/news/{newsId} {
-      allow get: if isSignedIn() && isUserInClub(resource.data.clubId, request.auth.uid);
-      allow list: if isClubStaff(request.query.clubId);
-      allow write: if isClubStaff(request.resource.data.clubId);
-    }
-
+    // Actividades (lectura general, escritura solo staff)
     match /artifacts/the-club-cloud/public/data/activities/{activityId} {
-      allow get: if isSignedIn() && isUserInClub(resource.data.clubId, request.auth.uid);
-      allow list: if isClubStaff(request.query.clubId);
+      allow read: if isSignedIn();
+      allow list: if isSignedIn();
       allow write: if isClubStaff(request.resource.data.clubId);
     }
 
-    match /artifacts/the-club-cloud/public/data/schedule/{scheduleId} {
-      allow get: if isSignedIn() && isUserInClub(resource.data.clubId, request.auth.uid);
-      allow list: if isClubStaff(request.query.clubId);
-      allow write: if isClubStaff(request.resource.data.clubId);
-    }
-
+    // Instructores (ellos mismos o staff)
     match /artifacts/the-club-cloud/public/data/instructors/{instructorId} {
-      allow get: if isSignedIn() && isUserInClub(resource.data.clubId, request.auth.uid);
-      allow list: if isClubStaff(request.query.clubId);
-      allow write: if isClubStaff(request.resource.data.clubId);
-    }
-
-    match /artifacts/the-club-cloud/public/data/payments/{paymentId} {
-      allow read: if isClubStaff(resource.data.clubId) 
-                   || (isSignedIn() && request.auth.uid == resource.data.memberId);
-      allow list: if isClubStaff(request.query.clubId);
-      allow write: if isClubStaff(request.resource.data.clubId);
-    }
-
-    match /artifacts/the-club-cloud/public/data/dues/{dueId} {
-      allow read: if isClubStaff(resource.data.clubId) 
-                   || (isSignedIn() && request.auth.uid == resource.data.memberId);
-      allow list: if isClubStaff(request.query.clubId);
-      allow write: if isClubStaff(request.resource.data.clubId);
-    }
-
-    match /artifacts/the-club-cloud/public/data/attendance/{logId} {
-      allow read, create: if isClubStaff(request.resource.data.clubId);
-      allow update, delete: if false;
+      allow read: if isClubStaff(resource.data.clubId) || isInstructorSelf(instructorId);
+      allow write: if isClubStaff(request.resource.data.clubId) || isInstructorSelf(instructorId);
+      allow list: if isSignedIn();
     }
   }
 }

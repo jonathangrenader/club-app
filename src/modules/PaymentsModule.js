@@ -8,10 +8,8 @@ import { Loader2, Plus, Download, MessageCircle, Mail as MailIcon, FileDown, Pen
 
 const appId = 'the-club-cloud';
 
-const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) => {
-    const [dues, setDues] = useState([]);
-    const [payments, setPayments] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+const PaymentsModule = ({ db, currentClub, members, config, dues, payments, handleFileUpload }) => {
+    const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('dues');
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -20,33 +18,6 @@ const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) 
     const [currentPayment, setCurrentPayment] = useState(null);
 
     const membersMap = useMemo(() => new Map(members.map(m => [m.id, m])), [members]);
-
-    useEffect(() => {
-        if (!db || !currentClub?.id) {
-            setIsLoading(false);
-            return;
-        }
-        setIsLoading(true);
-        const duesPath = `artifacts/${appId}/public/data/dues`;
-        const paymentsPath = `artifacts/${appId}/public/data/payments`;
-
-        const qDues = query(collection(db, duesPath), where("clubId", "==", currentClub.id));
-        const qPayments = query(collection(db, paymentsPath), where("clubId", "==", currentClub.id), orderBy("date", "desc"));
-
-        const unsubDues = onSnapshot(qDues, (snap) => {
-            setDues(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-
-        const unsubPayments = onSnapshot(qPayments, (snap) => {
-            setPayments(snap.docs.map(p => ({ id: p.id, ...p.data() })));
-            setIsLoading(false);
-        });
-
-        return () => {
-            unsubDues();
-            unsubPayments();
-        };
-    }, [db, currentClub]);
 
     const handleOpenPaymentModal = (due) => {
         setCurrentDue({...due, memberName: membersMap.get(due.memberId)?.name});
@@ -148,7 +119,8 @@ const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) 
         setIsLoading(false);
     };
 
-    const pendingDues = useMemo(() => dues.filter(d => d.status === 'Pendiente'), [dues]);
+    const pendingDues = useMemo(() => (dues || []).filter(d => d.status === 'Pendiente'), [dues]);
+    const paidPayments = useMemo(() => payments || [], [payments]);
 
     return (
         <>
@@ -165,12 +137,11 @@ const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) 
             <div>
                 <div className="flex space-x-1 rounded-lg bg-gray-800 p-1 mb-6 max-w-sm">
                     <button onClick={() => setActiveTab('dues')} className={`w-full p-2 text-sm font-medium rounded-md ${activeTab === 'dues' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Cuotas Pendientes ({pendingDues.length})</button>
-                    <button onClick={() => setActiveTab('payments')} className={`w-full p-2 text-sm font-medium rounded-md ${activeTab === 'payments' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Historial de Pagos ({payments.length})</button>
+                    <button onClick={() => setActiveTab('payments')} className={`w-full p-2 text-sm font-medium rounded-md ${activeTab === 'payments' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Historial de Pagos ({paidPayments.length})</button>
                 </div>
             
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                     {isLoading ? <div className="text-center p-8"><Loader2 className="animate-spin inline-block"/></div> :
-                     activeTab === 'dues' ? (
+                     {activeTab === 'dues' ? (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-gray-700"><tr><th className="p-3">Socio</th><th className="p-3">Período</th><th className="p-3">Monto</th><th className="p-3">Estado</th><th className="p-3">Acciones</th></tr></thead>
@@ -198,7 +169,7 @@ const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) 
                              <table className="w-full text-left">
                                 <thead className="bg-gray-700"><tr><th className="p-3">Socio</th><th className="p-3">Período</th><th className="p-3">Monto</th><th className="p-3">Fecha de Pago</th><th className="p-3">Acciones</th></tr></thead>
                                 <tbody>
-                                    {payments.map(p => (
+                                    {paidPayments.map(p => (
                                         <tr key={p.id} className="border-b border-gray-700">
                                             <td className="p-3">{membersMap.get(p.memberId)?.name || 'Socio no encontrado'}</td>
                                             <td className="p-3">{p.period}</td>
@@ -214,7 +185,7 @@ const PaymentsModule = ({ db, currentClub, members, config, handleFileUpload }) 
                                     ))}
                                 </tbody>
                             </table>
-                             {payments.length === 0 && <p className="text-center text-gray-400 py-4">No hay pagos registrados.</p>}
+                             {paidPayments.length === 0 && <p className="text-center text-gray-400 py-4">No hay pagos registrados.</p>}
                         </div>
                      )}
                 </div>
